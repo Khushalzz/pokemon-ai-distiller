@@ -4,14 +4,46 @@ This repository contains a standalone, Kaggle-ready Jupyter Notebook demonstrati
 
 As a fun **example use-case**, this pipeline is configured to rewrite retro RPG dialogue (specifically from a popular 90s monster-catching game) to generate witty, context-aware NPC interactions. However, this Hybrid RAG + Distillation architecture can be applied to *any* domain where you need 70B-level reasoning at a fraction of the cost!
 
+## 🧠 Distillation Architecture
+
+The entire process is fully automated. We use a hybrid generation approach to ensure we never hit rate limits. If the API throttles the Teacher model, we instantly load the Student model into memory to continue generating synthetic data locally.
+
+```mermaid
+graph TD
+    A[Retro RPG Database] -->|Extract| B(Unique Text Strings)
+    B --> C{Hybrid Distillation Engine}
+    C -->|Teacher API| D[Groq API: Llama-3.3-70B]
+    C -->|Student Fallback| E[Kaggle T4 GPUs: Qwen2.5-7B]
+    F[(Live API RAG Context)] -->|Injected Knowledge| C
+    D --> G(JSON Dataset of Witty Dialogue)
+    E --> G
+    G --> H((Kaggle PEFT LoRA Training on Qwen2.5-7B))
+    H --> I[20MB Distilled LoRA Adapter]
+```
+
 ## 📊 The Technical Feat: Extreme Efficiency
 
-By distilling the high-level reasoning of a 70B model into a 7B model via PEFT LoRA, we achieve massive architectural savings:
+By distilling the high-level reasoning of a 70B model into a 7B model via PEFT LoRA, we achieve massive architectural savings. It drops the barrier to entry from enterprise-grade server racks down to consumer hardware.
 
-- **Parameter Reduction:** 70 Billion parameters $\rightarrow$ 7 Billion parameters (**10x reduction**).
-- **VRAM Footprint:** Running Llama-3.3-70B locally requires ~140GB of VRAM (multiple enterprise A100 GPUs). Our 4-bit quantized student model (Qwen2.5-7B) runs flawlessly on just **~4.5GB of VRAM**, allowing it to be trained and hosted on a single free Kaggle T4 GPU, or even a budget consumer laptop!
-- **Storage Savings:** Instead of saving and distributing an enormous 30GB+ model, we train a custom LoRA adapter that selectively updates the base model's attention weights. The resulting trained adapter is **only 20 Megabytes**.
-- **Inference Latency:** Real-time generation drops from heavy multi-second latency bounds down to near-instantaneous local inference, which is critical for highly interactive real-time applications.
+### Efficiency Comparison
+
+| Metric | Teacher (Llama-3.3-70B) | Student (Qwen2.5-7B LoRA) | Reduction Savings |
+|---|---|---|---|
+| **Parameters** | 70 Billion | 7 Billion | **10x Smaller** |
+| **VRAM Required** | ~140 GB | ~4.5 GB | **31x Less Memory** |
+| **Storage Space** | ~130 GB Base Model | 20 MB LoRA Adapter | **6,500x Less Storage** |
+| **Inference Cost** | High (Cloud APIs) | $0.00 (Local Hardware) | **100% Free** |
+| **Latency** | Heavy Multi-Second | Near-Instantaneous | **Real-Time Execution** |
+
+### VRAM Requirements Graph
+
+```mermaid
+xychart-beta
+    title "VRAM Hardware Requirements (GB)"
+    x-axis ["Llama-3.3-70B Teacher", "Qwen2.5-7B 4-bit Student"]
+    y-axis "Gigabytes (GB)" 0 --> 150
+    bar [140, 4.5]
+```
 
 ---
 
