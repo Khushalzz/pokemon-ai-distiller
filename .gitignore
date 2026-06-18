@@ -1,0 +1,7 @@
+__pycache__/
+venv/
+venv2/
+.ipynb_checkpoints/
+pokemon_adapter/
+distilled_dataset.json
+generate_notebook.py
