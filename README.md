@@ -1,6 +1,6 @@
-# AI Distillation: Teaching Qwen2.5-7B via Llama-3.3-70B
+# AI Distillation: Teaching Qwen2.5-1.5B via Llama-3.3-70B
 
-This repository contains a standalone, Kaggle-ready Jupyter Notebook demonstrating **Knowledge Distillation**. We use a massive teacher model (Llama-3.3-70B) to train a lightweight, lightning-fast student model (Qwen2.5-7B) using LoRA (Low-Rank Adaptation).
+This repository contains a standalone, Kaggle-ready Jupyter Notebook demonstrating **Knowledge Distillation**. We use a massive teacher model (Llama-3.3-70B) to train a lightweight, lightning-fast student model (Qwen2.5-1.5B) using LoRA (Low-Rank Adaptation).
 
 As a fun **example use-case**, this pipeline is configured to rewrite retro RPG dialogue (specifically from a popular 90s monster-catching game) to generate witty, context-aware NPC interactions. However, this Hybrid RAG + Distillation architecture can be applied to *any* domain where you need 70B-level reasoning at a fraction of the cost!
 
@@ -13,24 +13,24 @@ graph TD
     A[Retro RPG Database] -->|Extract| B(Unique Text Strings)
     B --> C{Hybrid Distillation Engine}
     C -->|Teacher API| D[Groq API: Llama-3.3-70B]
-    C -->|Student Fallback| E[Kaggle T4 GPUs: Qwen2.5-7B]
+    C -->|Student Fallback| E[Kaggle T4 GPUs: Qwen2.5-1.5B]
     F[(Live API RAG Context)] -->|Injected Knowledge| C
     D --> G(JSON Dataset of Witty Dialogue)
     E --> G
-    G --> H((Kaggle PEFT LoRA Training on Qwen2.5-7B))
+    G --> H((Kaggle PEFT LoRA Training on Qwen2.5-1.5B))
     H --> I[20MB Distilled LoRA Adapter]
 ```
 
 ## 📊 The Technical Feat: Extreme Efficiency
 
-By distilling the high-level reasoning of a 70B model into a 7B model via PEFT LoRA, we achieve massive architectural savings. It drops the barrier to entry from enterprise-grade server racks down to consumer hardware.
+By distilling the high-level reasoning of a 70B model into a 1.5B model via PEFT LoRA, we achieve massive architectural savings. It drops the barrier to entry from enterprise-grade server racks down to consumer hardware.
 
 ### Efficiency Comparison
 
-| Metric | Teacher (Llama-3.3-70B) | Student (Qwen2.5-7B LoRA) | Reduction Savings |
+| Metric | Teacher (Llama-3.3-70B) | Student (Qwen2.5-1.5B LoRA) | Reduction Savings |
 |---|---|---|---|
-| **Parameters** | 70 Billion | 7 Billion | **10x Smaller** |
-| **VRAM Required** | ~140 GB | ~4.5 GB | **31x Less Memory** |
+| **Parameters** | 70 Billion | 1.5 Billion | **46x Smaller** |
+| **VRAM Required** | ~140 GB | ~1.5 GB | **93x Less Memory** |
 | **Storage Space** | ~130 GB Base Model | 20 MB LoRA Adapter | **6,500x Less Storage** |
 | **Inference Cost** | High (Cloud APIs) | $0.00 (Local Hardware) | **100% Free** |
 | **Latency** | Heavy Multi-Second | Near-Instantaneous | **Real-Time Execution** |
@@ -40,9 +40,9 @@ By distilling the high-level reasoning of a 70B model into a 7B model via PEFT L
 ```mermaid
 xychart-beta
     title "VRAM Hardware Requirements (GB)"
-    x-axis ["Llama-3.3-70B Teacher", "Qwen2.5-7B 4-bit Student"]
+    x-axis ["Llama-3.3-70B Teacher", "Qwen2.5-1.5B 4-bit Student"]
     y-axis "Gigabytes (GB)" 0 --> 150
-    bar [140, 4.5]
+    bar [140, 1.5]
 ```
 
 ---
@@ -91,7 +91,7 @@ def inject_rag_context(text):
 ```
 
 ### 2. Hybrid Distillation (Llama-3 Teacher -> Qwen2.5 Fallback)
-We iterate over our dataset and attempt to call the Groq API to utilize the massive **Llama-3.3-70B**. If Groq rate limits us, the pipeline seamlessly loads **Qwen2.5-7B** directly into the Kaggle GPU memory and continues generating the synthetic dataset locally!
+We iterate over our dataset and attempt to call the Groq API to utilize the massive **Llama-3.3-70B**. If Groq rate limits us, the pipeline seamlessly loads **Qwen2.5-1.5B** directly into the Kaggle GPU memory and continues generating the synthetic dataset locally!
 
 ```python
 import os
@@ -102,7 +102,7 @@ from kaggle_secrets import UserSecretsClient
 
 client = Groq(api_key=UserSecretsClient().get_secret("GROQ_API_KEY"))
 
-fallback_model_id = "Qwen/Qwen2.5-7B-Instruct"
+fallback_model_id = "yasserrmd/Human-Like-Qwen2.5-1.5B-Instruct"
 tokenizer = None
 fallback_model = None
 
@@ -121,7 +121,7 @@ for item in list(game_texts.items()):
         )
         response = chat.choices[0].message.content
     except Exception as e:
-        print("Groq rate limit hit. Falling back to local Qwen2.5-7B on T4 GPUs...")
+        print("Groq rate limit hit. Falling back to local Qwen2.5-1.5B on T4 GPUs...")
         # 2. Local Fallback
         if fallback_model is None:
             tokenizer = AutoTokenizer.from_pretrained(fallback_model_id)
@@ -140,7 +140,7 @@ with open("distilled_dataset.json", "w") as f:
 ```
 
 ### 3. PEFT LoRA Fine-Tuning (Student Model)
-Using `SFTTrainer`, we train our `Qwen2.5-7B` student model on the newly generated dataset. This teaches the fast, local model how to replicate the comedy and high-level reasoning of the 70B teacher model.
+Using `SFTTrainer`, we train our `Qwen2.5-1.5B` student model on the newly generated dataset. This teaches the fast, local model how to replicate the comedy and high-level reasoning of the 70B teacher model.
 
 ```python
 from datasets import load_dataset
@@ -155,7 +155,7 @@ def format_prompt(example):
 
 # Load the student model in 4-bit quantization to save massive VRAM
 bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
-model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-7B-Instruct", quantization_config=bnb_config, device_map="auto")
+model = AutoModelForCausalLM.from_pretrained("yasserrmd/Human-Like-Qwen2.5-1.5B-Instruct", quantization_config=bnb_config, device_map="auto")
 
 # Configure the LoRA Adapter
 lora_config = LoraConfig(
